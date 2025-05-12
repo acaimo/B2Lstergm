@@ -1,0 +1,30 @@
+Package: B2Lstergm
+Type: Package
+Title: Bayesian 2-layer Separable Temporal Exponential Random Graph Models
+Version: 0.1.0
+Authors@R: c(
+    person(
+      "Alberto", "Caimo",
+      email = "alberto.caimo1@ucd.ie",
+      role = c("aut", "cre")
+    ),
+    person(
+      "Isabella", "Gollini",
+      email = "isabella.gollini@ucd.ie",
+      role = c("aut")
+    )
+  )
+Description: Bayesian analysis for separable 2-layer temporal exponential random graph models. 
+License: GPL (>= 3)
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.2
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+Depends: 
+    ergm,
+    ergm.multi,
+    mvtnorm,
+    R (>= 3.5)

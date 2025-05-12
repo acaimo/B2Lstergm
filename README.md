@@ -1,0 +1,18 @@
+
+# B2Lstergm
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+This package implements Bayesian parameter inference for 2-layer separable temporal exponential random graph models.
+
+## Installation
+
+You can install the development version of **B2Lstergm** from [GitHub](https://github.com/) with:
+
+``` r
+# install.packages("remotes")
+remotes::install_github("acaimo/B2Lstergm")
+```
+
+

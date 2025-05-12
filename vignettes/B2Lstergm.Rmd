@@ -1,0 +1,213 @@
+---
+title: "B2Lstergm"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{B2Lstergm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, eval = FALSE}
+library(B2Lstergm)
+library(coda)
+library(scales)
+
+# -----------------------------
+# US Congressional network data
+# -----------------------------
+data("senators70_am") 
+y_0 <- senators70_am$S99
+y_1 <- senators70_am$S100
+y_2 <- senators70_am$S101
+
+# Edge covariate matrix party 
+# (NB: ergm.multi layers do not currently work with nodematch() statistics)
+c_party <- c(ifelse(attributes(y_0)$senators$Party == 'R', 1, 2),
+             ifelse(attributes(y_0)$senators$Party == 'R', 1, 2))
+n <- dim(attributes(y_0)$senators)[1]
+rep <- matrix(NA, n, n)
+dem <- matrix(NA, n, n)
+for(i in 1:n) rep[i, ] <- 1 * (c_party[i] == 1)
+for(i in 1:n) dem[i, ] <- 1 * (c_party[i] == 2)
+
+
+L.z <- list(as.network(1 * (y_0[, ] == 1), directed = FALSE), 
+            as.network(1 * (y_1[, ] == 1), directed = FALSE), 
+            as.network(1 * (y_2[, ] == 1), directed = FALSE))
+L.x <- list(as.network(abs(y_0[, ]), directed = FALSE), 
+            as.network(abs(y_1[, ]), directed = FALSE),
+            as.network(abs(y_2[, ]), directed = FALSE))
+
+
+y_t <- list()
+for(t in 1:3) { 
+  y_t[[t]] <- Layer(list(positive = L.z[[t]], active = L.x[[t]]))
+  set.vertex.attribute(y_t[[t]], 'party', ifelse(attributes(y_0)$senators$Party == 'R', 1, 2))
+}
+
+# Plot networks
+set.seed(2)
+cs <- plot(L.x[[1]],
+           label = 1:n, 
+           main = "active", 
+           displaylabels = FALSE)
+par(mfrow = c(1, 3), mar = rep(1, 4))
+cols <- c(adjustcolor("black", 0.5), adjustcolor("red", 0.5))
+for(i in 1:3) {
+  plot(L.x[[i]], 
+       coord = cs, 
+       vertex.col = c("red", "blue")[c_party],
+       vertex.cex = 2,
+       edge.col = 2*L.x[[i]][, ] - L.z[[i]][, ],
+       edge.lty = 3*L.x[[i]][, ] - 2*L.z[[i]][, ])
+}
+
+
+# -------------------
+# Model specification
+# -------------------
+
+# Multi-layer logic
+positive <- ~positive
+active <- ~active
+non_active <- ~(!positive & !active)
+negative <- ~(active & !positive)
+
+formula <-  #
+ ~L(~edges, active) +                         # Activity constraint (Inf)
+  L(~edges +                                  # EDGE+
+     edgecov(rep) +                           # Rep-HOMOPHILY+
+     gwdegree(0.2, fixed = TRUE), positive) + # GWEDEGREE+           
+  gwespL(0.6,                                 # GWESF+
+         fixed = TRUE, 
+         L.base = positive, 
+         Ls.path = list(positive, positive)) +
+  gwespL(0.6,                                 # GWESE+
+         fixed = TRUE,
+         L.base = positive,
+         Ls.path = list(negative, negative)) +
+  gwespL(0.6,                                 # GWESE-
+         fixed = TRUE,
+         L.base = negative,
+         Ls.path = list(negative, negative))
+
+
+# ----------------------------------
+# Observed signed network statistics
+# ----------------------------------
+y_2_F <- y_2_P <- y_3_F <- y_3_P <- y_t[[1]]
+y_2_F[, ] <- y_t[[1]][, ] + y_t[[2]][, ]
+y_3_F[, ] <- y_t[[2]][, ] + y_t[[3]][, ]
+y_2_P[, ] <- y_t[[1]][, ] * y_t[[2]][, ]
+y_3_P[, ] <- y_t[[2]][, ] * y_t[[3]][, ]
+sy <- list(F_obs =
+             cbind(summary_formula(object = formula, basis = y_2_F),
+                   summary_formula(object = formula, basis = y_3_F)),
+           P_obs = 
+             cbind(summary_formula(object = formula, basis = y_2_P),
+                   summary_formula(object = formula, basis = y_3_P)))
+
+
+# ------------------
+# Posterior sampling
+# ------------------
+
+times <- 3 # including t_0
+
+# initial conditional sign bases
+L.z_P <- L.z[[2]] & L.z[[1]] 
+L.z_F <- L.z[[2]] | L.z[[1]] 
+
+# observed interactions
+L.x_P <- list()
+L.x_F <- list()
+for(t in 2:times){
+  L.x_P[[t - 1]] <- L.x[[t]] & L.x[[t - 1]]
+  L.x_F[[t - 1]] <- L.x[[t]] | L.x[[t - 1]]
+}
+
+# MCMC setup          
+iters = 30000   
+adapt_start = 100   
+adapt_interval = 50   
+burn.in = 10000               
+ergm_sim_iters = 5000 
+
+# Vague prior specification
+mu.prior_F    = rep(0, 6)
+Sigma.prior_F = diag(rep(2, 6))
+mu.prior_P    = rep(0, 6)
+Sigma.prior_P = diag(rep(2, 6))
+
+# ADS setup
+n_chains = 1
+gamma_F = 0.6
+gamma_P = 1.2
+sigma.prop_F = 0.020 # initial Sigma for the F process
+sigma.prop_P = 0.015 # initial Sigma for the P process
+
+model.dim <- dim(sy$F_obs)[1]  # including first term L(~edges, ~(active))
+times <- length(L.x_F) + 1     # including t_0
+network = FALSE
+network.stats = FALSE
+coef_F = mu.prior_F    # without constraint: (Inf,...
+coef_P = mu.prior_P    # without constraint: (Inf,...
+
+posterior <- aea_amh(formula = formula,   
+                     y_t = y_t,      
+                     L.x_F = L.x_F,  
+                     L.x_P = L.x_P,  
+                     L.z_F = L.z_F,  
+                     L.z_P = L.z_P,  
+                     sy = sy,
+                     iters = iters,          
+                     burn.in = burn.in,          
+                     ergm_sim_iters = ergm_sim_iters,  
+                     # Prior specification
+                     mu.prior_F = mu.prior_F,
+                     Sigma.prior_F = Sigma.prior_F,
+                     mu.prior_P = mu.prior_P,
+                     Sigma.prior_P = Sigma.prior_P,
+                     # AMH settings
+                     n_chains = n_chains,
+                     init_s_F = sigma.prop_F,
+                     init_s_P = sigma.prop_P,
+                     adapt_start = adapt_start,     
+                     adapt_interval = adapt_interval)   
+
+# -------------------------------
+# Plot MCMC traces and histograms
+# -------------------------------
+plot_theta <- function(mat, param_name, index) {
+  values <- c(mat[sample, index, ])
+  # Histogram with density
+  hist(values, freq = FALSE, breaks = 10,
+       main = paste(param_name, index),
+       xlab = paste(param_name, index),
+       ylab = "Density")
+  # Print summary stats
+  summary_stats <- round(c(mean(values), 
+                           quantile(values, 
+                                    probs = c(0.025, 0.5, 0.975))), 2)
+  print(summary_stats)
+  # Trace plot
+  plot(values, type = 'l', 
+       xlab = "Iteration", ylab = "Value",
+       main = paste(param_name, index))
+}
+
+par(mfrow = c(6, 4), mar = c(4, 4, 2, 1))
+iters <- 1000 
+sample <- seq(0, iters, 1)
+for (i in 1:6) {
+  plot_theta(theta_F, "theta_F", i)
+  plot_theta(theta_P, "theta_P", i)
+}
+```

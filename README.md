@@ -15,4 +15,8 @@ You can install the development version of **B2Lstergm** from this repository wi
 remotes::install_github("acaimo/B2Lstergm")
 ```
 
+## Reference
+
+Caimo, A. and Gollini, I. "Separable models for dynamic signed networks" [arxiv:2505.07669](https://arxiv.org/abs/2505.07669).
+
 

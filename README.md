@@ -8,7 +8,7 @@ This package implements Bayesian parameter inference for separable 2-layer tempo
 
 ## Installation
 
-You can install the development version of **B2Lstergm** from [GitHub](https://github.com/) with:
+You can install the development version of **B2Lstergm** from this repository with:
 
 ``` r
 # install.packages("remotes")

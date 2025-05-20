@@ -4,7 +4,7 @@
 <!-- badges: start -->
 <!-- badges: end -->
 
-This package implements Bayesian parameter inference for separable 2-layer temporal exponential random graph models.
+This package implements Bayesian parameter inference for 2-layer separable TERGMs.
 
 ## Installation
 
